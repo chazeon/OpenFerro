@@ -43,6 +43,9 @@ class interaction_base:
             paras = parameters
         elif isinstance(parameters, np.ndarray) or isinstance(parameters, list):
             paras = jnp.array(parameters)
+        elif isinstance(parameters, tuple):
+            # Tuples of arrays with different shapes, e.g. (C_tensor, a, V).
+            paras = tuple(jnp.asarray(p) for p in parameters)
         else:
             raise ValueError("Parameters must be a numpy array, a list, or a jax array")
         self.parameters = paras

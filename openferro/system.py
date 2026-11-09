@@ -8,6 +8,7 @@ This file is part of OpenFerro.
 
 from time import time as timer
 import logging
+import warnings
 import numpy as np
 import jax.numpy as jnp
 from openferro.field import *
@@ -15,6 +16,12 @@ from openferro.interaction import *
 from openferro.units import Constants
 ## import force engines
 from openferro.engine.elastic import *
+from openferro.engine.elastic_general import (
+    GPA_PER_EV_PER_ANGSTROM3,
+    homo_elastic_energy_general,
+    inhomo_elastic_energy_general,
+    voigt_to_tensor,
+)
 from openferro.engine.ferroelectric import *
 from openferro.engine.magnetic import *
 from openferro.engine.ewald import build_dipole_dipole_ewald
@@ -546,6 +553,127 @@ class System:
         interaction.set_energy_engine(inhomo_elastic_energy, enable_jit=enable_jit)
         interaction.create_force_engine(enable_jit=enable_jit)
         interaction.set_parameters(jnp.array([B11, B12, B44]))
+        self._self_interaction_dict[ID] = interaction
+        return interaction
+
+    def _elastic_tensor_from_voigt(self, C_voigt, unit):
+        """Return the ``(3, 3, 3, 3)`` stiffness tensor in eV/Angstrom^3.
+
+        Parameters
+        ----------
+        C_voigt : array_like
+            Symmetric 6x6 Voigt stiffness matrix.
+        unit : str
+            ``"eV/A^3"`` or ``"GPa"``.
+        """
+        if unit not in ("eV/A^3", "GPa"):
+            raise ValueError("unit must be 'eV/A^3' or 'GPa'.")
+        C_np = np.asarray(C_voigt, dtype=float)
+        if C_np.shape != (6, 6):
+            raise ValueError("C_voigt must have shape (6, 6).")
+        if not np.allclose(C_np, C_np.T):
+            raise ValueError("C_voigt must be symmetric.")
+        if unit == "GPa":
+            C_np = C_np / GPA_PER_EV_PER_ANGSTROM3
+        if np.min(np.linalg.eigvalsh(C_np)) <= 0.0:
+            warnings.warn(
+                "Voigt stiffness is not positive definite; the elastic energy "
+                "is not bounded below."
+            )
+        return voigt_to_tensor(C_np)
+
+    def add_homo_elastic_general_interaction(
+        self,
+        ID,
+        field_ID,
+        C_voigt,
+        unit="eV/A^3",
+        enable_jit=True,
+        n_cells=None,
+    ):
+        """Add a homogeneous elastic energy for an arbitrary-symmetry stiffness.
+
+        The energy is ``1/2 V_total eps:C:eps`` (see
+        :func:`homo_elastic_energy_general`), with ``V_total = n_cells * V_cell``.
+
+        Parameters
+        ----------
+        ID : str
+            Interaction ID.
+        field_ID : str
+            ID of the global strain field.
+        C_voigt : array_like
+            Symmetric 6x6 Voigt stiffness matrix.
+        unit : str, optional
+            Unit of ``C_voigt``, ``"eV/A^3"`` (default) or ``"GPa"``.
+        enable_jit : bool, optional
+            Whether to JIT the energy and force engines.
+        n_cells : int, optional
+            Number of primitive cells in the supercell. Defaults to
+            ``lattice.nsites``.
+        """
+        if n_cells is None:
+            n_cells = self.lattice.nsites
+        elif (
+            isinstance(n_cells, (bool, np.bool_))
+            or not isinstance(n_cells, (int, np.integer))
+            or n_cells <= 0
+        ):
+            raise ValueError("n_cells must be a positive integer.")
+        C_tensor = self._elastic_tensor_from_voigt(C_voigt, unit)
+        V_total = float(n_cells) * float(self.lattice.unit_volume)
+        self._add_interaction_sanity_check(ID)
+        interaction = self_interaction(field_ID)
+        interaction.set_energy_engine(homo_elastic_energy_general, enable_jit=enable_jit)
+        interaction.create_force_engine(enable_jit=enable_jit)
+        interaction.set_parameters((C_tensor, jnp.asarray(V_total)))
+        self._self_interaction_dict[ID] = interaction
+        return interaction
+
+    def add_inhomo_elastic_general_interaction(
+        self,
+        ID,
+        field_ID,
+        C_voigt,
+        unit="eV/A^3",
+        enable_jit=True,
+    ):
+        """Add an inhomogeneous elastic energy for an arbitrary-symmetry stiffness.
+
+        Requires an orthogonal lattice. The lattice constants ``a_i`` are the
+        norms of the primitive vectors, and ``V_cell`` is the primitive-cell
+        volume. See :func:`inhomo_elastic_energy_general` for the formula.
+
+        Parameters
+        ----------
+        ID : str
+            Interaction ID.
+        field_ID : str
+            ID of the local strain field (``LocalStrain3D``).
+        C_voigt : array_like
+            Symmetric 6x6 Voigt stiffness matrix.
+        unit : str, optional
+            Unit of ``C_voigt``, ``"eV/A^3"`` (default) or ``"GPa"``.
+        enable_jit : bool, optional
+            Whether to JIT the energy and force engines.
+
+        Raises
+        ------
+        ValueError
+            If the lattice vectors are not mutually orthogonal.
+        """
+        vectors = [np.asarray(v, dtype=float) for v in (self.lattice.a1, self.lattice.a2, self.lattice.a3)]
+        for i, j in ((0, 1), (1, 2), (0, 2)):
+            if not np.isclose(np.dot(vectors[i], vectors[j]), 0.0):
+                raise ValueError("Inhomogeneous general elastic energy requires an orthogonal lattice.")
+        lattice_constants = jnp.asarray([np.linalg.norm(v) for v in vectors])
+        C_tensor = self._elastic_tensor_from_voigt(C_voigt, unit)
+        V_cell = jnp.asarray(float(self.lattice.unit_volume))
+        self._add_interaction_sanity_check(ID)
+        interaction = self_interaction(field_ID)
+        interaction.set_energy_engine(inhomo_elastic_energy_general, enable_jit=enable_jit)
+        interaction.create_force_engine(enable_jit=enable_jit)
+        interaction.set_parameters((C_tensor, lattice_constants, V_cell))
         self._self_interaction_dict[ID] = interaction
         return interaction
 

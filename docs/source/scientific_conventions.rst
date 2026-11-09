@@ -82,6 +82,25 @@ the local acoustic-displacement form of Eq. (13), the
 production coefficients are ``g11 = B11 / 4``, ``g12 = B12 / 8``, and
 ``g44 = B44 / 8``. A uniform local displacement has zero elastic energy.
 
+For general symmetry, the cubic engines above hard-code three constants. For tetragonal,
+orthorhombic, or other lower-symmetry crystals, use the general engines in
+``openferro/engine/elastic_general.py``. The symmetry is set by the input
+stiffness, given as a 6x6 Voigt matrix in ``eV/Angstrom^3`` (or ``GPa``
+through the ``unit`` argument). The homogeneous energy is
+
+.. math::
+
+   E = \tfrac12 V_{\mathrm{total}}\, \eta_{ij} C_{ijkl} \eta_{kl},
+
+with ``V_total = n_cells * V_cell``. The inhomogeneous energy uses the local
+displacement ``v_a = u_a / a_a`` on an orthogonal lattice, with the
+displacement gradient ``G_ab = (a_a / a_b) D_b v_a``. Each ``D_b`` is a
+one-sided lattice difference, averaged over the eight sign choices. This
+averaging makes the energy exact to ``O((k a)^2)`` for long-wavelength
+displacements and removes zero-energy checkerboard (hourglass) modes.
+Use ``System.add_homo_elastic_general_interaction`` and
+``System.add_inhomo_elastic_general_interaction``.
+
 The homogeneous and inhomogeneous strain-mode interactions implement Eq. (14)
 with parameter order ``(B1xx, B1yy, B4yz)``. For homogeneous strain, the
 matrix in ``0.5 * sum_i u_i^T B(eta) u_i`` is

@@ -52,6 +52,14 @@ Elastic
    :undoc-members:
    :show-inheritance:
 
+Elastic (general symmetry)
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: openferro.engine.elastic_general
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Ferroelectric
 ^^^^^^^^^^^^^
 
