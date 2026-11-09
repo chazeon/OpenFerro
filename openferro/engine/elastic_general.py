@@ -186,22 +186,23 @@ def inhomo_elastic_energy_general(local_displacement, parameters):
 
     ``G_ab = (a_a / a_b) * D^{s_b}_b v_a``
 
-    with ``D^+ v(R) = v(R+b) - v(R)`` and ``D^- v(R) = v(R) - v(R-b)``. The
-    strain is ``eps = sym(G)``, and the energy is ``1/2 V_cell eps C eps``
-    summed over all cells.
+    with the forward difference ``D^+ v = jnp.roll(v, -1, axis=b) - v``
+    (``v(R+b) - v(R)``) and the backward difference
+    ``D^- v = v - jnp.roll(v, 1, axis=b)`` (``v(R) - v(R-b)``). The strain is
+    ``eps = sym(G)``, and the energy is ``1/2 V_cell eps C eps`` summed over
+    all cells.
 
-    The gradient is evaluated for all 8 sign choices ``s`` in ``{+,-}^3``, and
-    the energies are averaged. This has two effects:
+    The gradient is evaluated for all 8 choices of forward/backward difference
+    along x, y, z (``itertools.product((+1, -1), repeat=3)``), and the energies
+    are averaged. This has two effects:
 
     * The average removes the half-cell offset of each one-sided difference.
       For a smooth displacement, every ``eps^s`` approaches ``sym(grad u)``
       with error ``O((k a)^2)``, so the energy is exact in the long-wavelength
       limit.
-    * A single one-sided stencil has zero-energy "hourglass" modes. For
-      example, a checkerboard displacement has nonzero one-sided differences
-      and therefore positive energy here. The sum over the 8 stencils is
-      positive definite because each term is a positive-definite quadratic
-      form in the strain.
+    * Using only one difference choice, some zig-zag displacement patterns
+      (e.g. a checkerboard) can give zero strain and therefore cost no energy.
+      Averaging over all 8 choices removes these zero-energy patterns.
 
     Parameters
     ----------
