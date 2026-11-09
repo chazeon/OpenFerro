@@ -192,17 +192,21 @@ def inhomo_elastic_energy_general(local_displacement, parameters):
     ``eps = sym(G)``, and the energy is ``1/2 V_cell eps C eps`` summed over
     all cells.
 
-    The gradient is evaluated for all 8 choices of forward/backward difference
-    along x, y, z (``itertools.product((+1, -1), repeat=3)``), and the energies
-    are averaged. This has two effects:
+    The loop runs over the 8 sign patterns ``itertools.product((1, -1),
+    repeat=3)``. Each pattern picks a forward or backward ``jnp.roll``
+    difference along x, y and z, builds the gradient, symmetrizes it into a
+    strain, and computes the energy with ``einsum``. The 8 energies are then
+    averaged.
 
-    * The average removes the half-cell offset of each one-sided difference.
-      For a smooth displacement, every ``eps^s`` approaches ``sym(grad u)``
-      with error ``O((k a)^2)``, so the energy is exact in the long-wavelength
-      limit.
-    * Using only one difference choice, some zig-zag displacement patterns
-      (e.g. a checkerboard) can give zero strain and therefore cost no energy.
-      Averaging over all 8 choices removes these zero-energy patterns.
+    A single choice already has no zero-energy modes beyond the three uniform
+    shifts on a periodic lattice. It is not mirror symmetric, however: the
+    energy changes under x -> -x, y -> -y and z -> -z. For example, a transverse
+    wave along [110] with polarization [1-10] and a wave along [1-10] with
+    polarization [110] have the same energy in the continuum, and both agree
+    with it to ``O((k a)^2)``, but a single choice gives them different
+    energies at finite k. Averaging over the 8 choices restores the mirror
+    symmetry, so these waves cost the same energy. This matters for domain
+    walls: (110) and (1-10) twin walls must be equivalent.
 
     Parameters
     ----------

@@ -97,7 +97,9 @@ displacement ``v_a = u_a / a_a`` on an orthogonal lattice, with the
 displacement gradient ``G_ab = (a_a / a_b) D_b v_a``. Each ``D_b`` is a
 one-sided lattice difference, averaged over the eight sign choices. This
 averaging makes the energy exact to ``O((k a)^2)`` for long-wavelength
-displacements and removes zero-energy checkerboard (hourglass) modes.
+displacements. It also restores the mirror symmetries x -> -x, y -> -y and
+z -> -z, so that, for example, [110] and [1-10] waves (and twin walls) cost
+the same energy at finite k.
 Use ``System.add_homo_elastic_general_interaction`` and
 ``System.add_inhomo_elastic_general_interaction``.
 

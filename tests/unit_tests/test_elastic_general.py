@@ -226,7 +226,8 @@ def test_inhomogeneous_general_translation_is_free():
     assert abs(float(energy)) < 1e-20
 
 
-def test_inhomogeneous_general_checkerboard_has_no_zero_mode():
+def test_inhomogeneous_general_checkerboard_costs_energy():
+    """Sanity check: the averaged engine charges a checkerboard displacement."""
     shape = (4, 4, 4)
     parity = (-1.0) ** np.indices(shape).sum(axis=0)
     checkerboard = np.zeros(shape + (3,))
@@ -249,6 +250,54 @@ def test_inhomogeneous_general_checkerboard_has_no_zero_mode():
         )
         > 0.0
     )
+
+
+def test_mirror_symmetry_110_vs_1m10():
+    """Transverse waves along [110] and [1-10] cost the same energy.
+
+    The 8-choice average is invariant under the mirror x -> -x, which maps
+    k=(1,1,0), U=(1,-1,0) onto k=(1,-1,0), U=(1,1,0). A single forward-only
+    choice is not mirror symmetric and gives a different energy here.
+    """
+    # Tetragonal-compatible orthorhombic C (C11=C22, C13=C23, C44=C55), in GPa.
+    tetra_gpa = np.array(
+        [
+            [600.0, 250.0, 200.0, 0.0, 0.0, 0.0],
+            [250.0, 600.0, 200.0, 0.0, 0.0, 0.0],
+            [200.0, 200.0, 900.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 270.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 270.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 0.0, 300.0],
+        ]
+    )
+    C_ev = tetra_gpa / GPA
+    lattice = (1.0, 1.0, 1.5)  # a = b
+    shape = (8, 8, 2)  # k = 2 pi / 8 along x and y
+
+    wave_110 = _cosine_field(lattice, shape, (1, 1, 0), np.array([1.0, -1.0, 0.0]))
+    wave_1m10 = _cosine_field(lattice, shape, (1, -1, 0), np.array([1.0, 1.0, 0.0]))
+    parameters = _inhomo_parameters(C_ev, lattice)
+
+    e_110 = float(inhomo_elastic_energy_general(wave_110, parameters))
+    e_1m10 = float(inhomo_elastic_energy_general(wave_1m10, parameters))
+    assert e_110 > 0.0
+    assert e_110 == pytest.approx(e_1m10, rel=1e-10)
+
+    # Contrast: one forward-only choice breaks the mirror symmetry.
+    C_tensor, lattice_constants, V_cell = parameters
+    ratio = lattice_constants[:, None] / lattice_constants[None, :]
+
+    def forward_only_energy(v):
+        diff = jnp.stack(
+            [jnp.roll(v, -1, axis=b) - v for b in range(3)], axis=-1
+        )
+        grad = diff * ratio
+        eps = 0.5 * (grad + jnp.swapaxes(grad, -1, -2))
+        return 0.5 * V_cell * jnp.einsum("...ij,ijkl,...kl->", eps, C_tensor, eps)
+
+    f_110 = float(forward_only_energy(wave_110))
+    f_1m10 = float(forward_only_energy(wave_1m10))
+    assert abs(f_110 / f_1m10 - 1.0) > 0.1
 
 
 def test_old_cubic_inhomogeneous_engine_against_continuum_report():
